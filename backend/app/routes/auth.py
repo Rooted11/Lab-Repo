@@ -16,8 +16,31 @@ from ..services.security import (
     is_mfa_enabled,
     verify_totp_code,
 )
+from ..services.database import SessionLocal, AuditLog, AuditAction
+from datetime import datetime
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+def _audit_login(username: str, success: bool, reason: str, request: Request) -> None:
+    """Write a login attempt to the audit log table."""
+    try:
+        db = SessionLocal()
+        entry = AuditLog(
+            actor=username or "unknown",
+            actor_roles=[],
+            action=AuditAction.login,
+            entity_type="user",
+            entity_id=username or "unknown",
+            ip_address=get_request_client_ip(request),
+            details={"success": success, "reason": reason},
+            created_at=datetime.utcnow(),
+        )
+        db.add(entry)
+        db.commit()
+        db.close()
+    except Exception:
+        pass  # never let audit failures break login
+
 
 
 class LoginRequest(BaseModel):
@@ -65,6 +88,7 @@ def login(payload: LoginRequest, request: Request):
             )
 
     if not authenticate_credentials(payload.username, payload.password):
+        _audit_login(payload.username, False, "bad_credentials", request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password.",
@@ -73,6 +97,7 @@ def login(payload: LoginRequest, request: Request):
 
     if is_mfa_enabled():
         if not payload.otp_code or not verify_totp_code(settings.auth_totp_secret or "", payload.otp_code):
+            _audit_login(payload.username, False, "bad_totp", request)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Valid one-time code required.",
@@ -80,6 +105,7 @@ def login(payload: LoginRequest, request: Request):
             )
 
     login_rate_limiter.reset(rate_limit_key)
+    _audit_login(payload.username, True, "ok", request)
     return {
         "access_token": create_access_token(
             payload.username,

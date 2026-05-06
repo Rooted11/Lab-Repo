@@ -330,3 +330,103 @@ def _log_to_dict(log: Log) -> dict:
         "asset_id":      log.asset_id,
         "incident_id":   log.incident.id if log.incident else None,
     }
+
+
+# ── Archive search ──────────────────────────────────────────────────────────
+import gzip
+import json as _json
+from pathlib import Path as _Path
+from datetime import datetime as _dt
+
+_ARCHIVE_DIR = _Path("/var/backups/soc/log-archive")
+
+
+def _parse_iso(s: str | None) -> _dt | None:
+    if not s:
+        return None
+    try:
+        return _dt.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+@router.get("/archive/files")
+def list_archive_files():
+    """Inventory of available archive files."""
+    if not _ARCHIVE_DIR.exists():
+        return []
+    files = []
+    for f in sorted(_ARCHIVE_DIR.glob("logs-*.json.gz")):
+        try:
+            stat = f.stat()
+            files.append({
+                "name": f.name,
+                "size_bytes": stat.st_size,
+                "modified": _dt.utcfromtimestamp(stat.st_mtime).isoformat(),
+            })
+        except OSError:
+            continue
+    return files
+
+
+@router.get("/archive/search")
+def search_archive(
+    q: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    event_type: str | None = None,
+    source: str | None = None,
+    min_risk: float | None = None,
+    limit: int = 200,
+):
+    """
+    Search across all gzipped log archives in /var/backups/soc/log-archive/.
+    Returns up to `limit` matching records, newest first.
+    """
+    if not _ARCHIVE_DIR.exists():
+        return {"total_files_scanned": 0, "total_matches": 0, "items": []}
+
+    since_dt = _parse_iso(since)
+    until_dt = _parse_iso(until)
+    needle = q.lower() if q else None
+
+    matches: list[dict] = []
+    files_scanned = 0
+
+    # Newest archive files first
+    for f in sorted(_ARCHIVE_DIR.glob("logs-*.json.gz"), reverse=True):
+        files_scanned += 1
+        try:
+            with gzip.open(str(f), "rt", encoding="utf-8") as fh:
+                records = _json.load(fh)
+        except Exception:
+            continue
+
+        for rec in records:
+            ts = _parse_iso(rec.get("timestamp"))
+            if since_dt and ts and ts < since_dt:
+                continue
+            if until_dt and ts and ts > until_dt:
+                continue
+            if event_type and rec.get("event_type") != event_type:
+                continue
+            if source and rec.get("source") != source:
+                continue
+            if min_risk is not None and (rec.get("risk_score") or 0) < min_risk:
+                continue
+            if needle:
+                blob = " ".join(str(v).lower() for v in rec.values() if v is not None)
+                if needle not in blob:
+                    continue
+            rec["_archive_file"] = f.name
+            matches.append(rec)
+
+        if len(matches) >= limit:
+            break
+
+    matches.sort(key=lambda r: r.get("timestamp") or "", reverse=True)
+    return {
+        "total_files_scanned": files_scanned,
+        "total_matches": len(matches),
+        "items": matches[:limit],
+    }

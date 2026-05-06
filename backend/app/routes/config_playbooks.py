@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..services.database import get_db, PlaybookDefinition, PlaybookExecutionHistory
+from ..services.database import get_db, PlaybookDefinition, PlaybookExecutionHistory, PlaybookAction, Incident
 from ..services.authz import require_permissions
 
 router = APIRouter(prefix="/api/config/playbooks", tags=["config:playbooks"])
@@ -84,6 +84,34 @@ def update_playbook(playbook_id: int, payload: PlaybookUpdate, db: Session = Dep
         pb.requires_approval = payload.requires_approval
     db.commit()
     return {"id": pb.id}
+
+
+
+@router.get("/executions", dependencies=[Depends(require_permissions(["view:*", "playbooks:write"]))])
+def recent_playbook_executions(limit: int = 100, db: Session = Depends(get_db)):
+    """Recent automated playbook firings — global feed across all incidents."""
+    rows = (
+        db.query(PlaybookAction, Incident)
+        .outerjoin(Incident, PlaybookAction.incident_id == Incident.id)
+        .order_by(PlaybookAction.executed_at.desc())
+        .limit(min(limit, 500))
+        .all()
+    )
+    out = []
+    for pa, inc in rows:
+        out.append({
+            "id": pa.id,
+            "playbook": pa.playbook,
+            "action": pa.action,
+            "target": pa.target,
+            "status": pa.status.value if pa.status else None,
+            "result": pa.result,
+            "executed_at": pa.executed_at,
+            "incident_id": pa.incident_id,
+            "incident_title": inc.title if inc else None,
+            "incident_severity": (inc.severity.value if inc and inc.severity else None),
+        })
+    return out
 
 
 @router.get("/{playbook_id}/history", dependencies=[Depends(require_permissions(["view:*", "playbooks:write"]))])

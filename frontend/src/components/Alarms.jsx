@@ -7,7 +7,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "../services/api";
 
-const DEFAULT_ALARM_SOURCE = "nassenjoshua@gmail.com";
+const DEFAULT_ALARM_SOURCE = "you@example.com";
 
 const SEV = {
   critical: {
@@ -232,7 +232,7 @@ export default function Alarms({ lastUpdated, showAlert }) {
           <div className="grid gap-3 sm:grid-cols-3">
             <input
               className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none"
-              placeholder="Source (default: nassenjoshua@gmail.com)"
+              placeholder="Source (default: you@example.com)"
               value={form.source}
               onChange={(e) => setForm({ ...form, source: e.target.value })}
               required

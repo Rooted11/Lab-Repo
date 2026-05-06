@@ -153,6 +153,15 @@ export const api = {
   archiveLogs: () =>
     request("/api/logs/archive", { method: "POST" }),
 
+  getArchiveFiles: () => request("/api/logs/archive/files"),
+
+  searchArchivedLogs: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ""))
+    ).toString();
+    return request(`/api/logs/archive/search${qs ? `?${qs}` : ""}`);
+  },
+
   getThreatIntel: (params = {}) => {
     const qs = new URLSearchParams(
       Object.fromEntries(Object.entries(params).filter(([, value]) => value != null))
@@ -200,6 +209,7 @@ export const api = {
     request(`/api/config/detections/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteDetection: (id) => request(`/api/config/detections/${id}`, { method: "DELETE" }),
   getPlaybookDefs: () => request("/api/config/playbooks"),
+  getPlaybookExecutions: (limit = 100) => request(`/api/config/playbooks/executions?limit=${limit}`),
   createPlaybookDef: (payload) =>
     request("/api/config/playbooks", { method: "POST", body: JSON.stringify(payload) }),
   updatePlaybookDef: (id, payload) =>

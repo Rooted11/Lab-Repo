@@ -40,6 +40,14 @@ services:
       ENABLE_API_DOCS: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      INGEST_TOKEN: ${INGEST_TOKEN:-}
+      AI_AUTO_ENABLED: ${AI_AUTO_ENABLED:-false}
+      LOG_RETENTION_MINUTES: ${LOG_RETENTION_MINUTES:-43200}
+      FW_AGENT_URL: http://host.docker.internal:9090
+    volumes:
+      - /var/backups/soc/log-archive:/var/backups/soc/log-archive:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
@@ -68,12 +76,21 @@ services:
       dockerfile: backend/Dockerfile.prod
     command: ["python", "-m", "app.worker"]
     restart: unless-stopped
+    volumes:
+      - /var/backups/soc/log-archive:/var/backups/soc/log-archive
     environment:
       ENVIRONMENT: production
       USE_REDIS_STREAMS: ${USE_REDIS_STREAMS:-true}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       AUTH_ENABLED: "true"
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      LOG_RETENTION_MINUTES: ${LOG_RETENTION_MINUTES:-43200}
+      FW_AGENT_URL: http://host.docker.internal:9090
+      INGEST_TOKEN: ${INGEST_TOKEN:-}
+      AI_AUTO_ENABLED: ${AI_AUTO_ENABLED:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - db

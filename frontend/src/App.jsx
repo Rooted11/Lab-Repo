@@ -15,6 +15,7 @@ import NotificationsPage from "./components/NotificationsPage";
 import SettingsPage from "./components/SettingsPage";
 import SystemHealth from "./components/SystemHealth";
 import AuditLogs from "./components/AuditLogs";
+import LogArchive from "./components/LogArchive";
 import Alarms from "./components/Alarms";
 import HelpCenter from "./components/HelpCenter";
 import { api, authStorage } from "./services/api";
@@ -31,6 +32,7 @@ const NAV_GROUPS = [
       { id: "incidents", label: "Incident Queue", short: "IR", icon: "\u26A0" },
       { id: "advisor", label: "AI Analyst", short: "AI", icon: "\u2726" },
       { id: "feed", label: "Live Feed", short: "LOG", icon: "\u25CE" },
+      { id: "archive", label: "Log Archive", short: "ARC", icon: "\u29C9" },
     ],
   },
   {
@@ -71,6 +73,7 @@ const PAGE_HELP = {
   incidents: "Prioritize open incidents, adjust severity, and dispatch response teams.",
   advisor: "Ask the AI analyst for recommendations and incident summaries.",
   feed: "Tail the live log stream to confirm what is hitting the pipeline right now.",
+  archive: "Search archived logs that have rolled out of the live database. Filter by date, event, source, or risk.",
   threats: "Investigate IOC hits, threat feeds, and correlations with your environment.",
   assets: "See the current inventory, exposure warnings, and asset ownership notes.",
   detections: "Tune detection rules, thresholds, and suppression policies with confidence.",
@@ -104,6 +107,10 @@ const PAGE_TIPS = {
   feed: [
     "Filter by log level to surface alerts that match your current hunt.",
     "Pin the live feed to another screen for continuous visibility."
+  ],
+  archive: [
+    "Use date range + event type to scope a search to a specific incident window.",
+    "Min risk filter is the fastest way to find anomalies across months of archives."
   ],
   threats: [
     "Use IOC history to decide if you need to update block lists.",
@@ -218,7 +225,28 @@ function FullscreenState({ title, message, actionLabel, onAction }) {
 /* ── Main App ──────────────────────────────────────────────────────────── */
 
 export default function App() {
-  const [page, setPage] = useState("command");
+  const [page, _setPage] = useState(() => {
+    const hash = (typeof window !== "undefined" && window.location.hash || "").replace(/^#/, "");
+    const valid = NAV_ITEMS.find((i) => i.id === hash);
+    return valid ? hash : "command";
+  });
+  const setPage = useCallback((next) => {
+    _setPage(next);
+    if (typeof window !== "undefined") {
+      try { window.history.replaceState(null, "", "#" + next); } catch (e) {}
+    }
+  }, []);
+  // Listen for back/forward and direct URL hash changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHash = () => {
+      const h = (window.location.hash || "").replace(/^#/, "");
+      const v = NAV_ITEMS.find((i) => i.id === h);
+      if (v) _setPage(h);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [toasts, setToasts] = useState([]);
   const toastIdRef = useRef(0);
@@ -713,6 +741,7 @@ export default function App() {
             {page === "incidents" && <IncidentList lastUpdated={lastUpdated} showAlert={showAlert} />}
             {page === "advisor" && <AIAdvisor lastUpdated={lastUpdated} showAlert={showAlert} />}
             {page === "feed" && <LiveFeed lastUpdated={lastUpdated} showAlert={showAlert} setPage={setPage} />}
+            {page === "archive" && <LogArchive showAlert={showAlert} />}
             {page === "threats" && <ThreatTrends lastUpdated={lastUpdated} showAlert={showAlert} />}
             {page === "assets" && <AssetInventory lastUpdated={lastUpdated} showAlert={showAlert} />}
             {page === "detections" && <Detections showAlert={showAlert} />}
